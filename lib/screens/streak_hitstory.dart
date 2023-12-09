@@ -1,54 +1,46 @@
-import 'package:bitrec/screens/home.dart';
+import 'package:bitrec/hive/adapters/attempt.dart';
+import 'package:bitrec/hive/adapters/streak.dart';
+import 'package:bitrec/screens/streak_screen.dart';
 import 'package:bitrec/themes/my_colors.dart';
-import 'package:bitrec/utils/habbit_calc.dart';
+import 'package:bitrec/utils/streak_calc.dart';
+import 'package:bitrec/widgets/streak_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:velocity_x/velocity_x.dart';
 
-class HabbitHistoryUI extends ConsumerStatefulWidget {
-  const HabbitHistoryUI({
-    super.key,
-    required this.habbitWithHistory,
-    required this.habbitId,
-    required this.name,
-  });
-
-  final List habbitWithHistory;
-  final String? habbitId, name;
+class StreakHistoryUI extends ConsumerStatefulWidget {
+  const StreakHistoryUI(this.streak, {super.key});
+  final Streak streak;
 
   @override
-  ConsumerState<HabbitHistoryUI> createState() => _HabbitHistoryUIState();
+  ConsumerState<StreakHistoryUI> createState() => _StreakHistoryUIState();
 }
 
-class _HabbitHistoryUIState extends ConsumerState<HabbitHistoryUI> {
-  String? get name => widget.name;
-  String? get habbitId => widget.habbitId;
-  late List habbit;
+class _StreakHistoryUIState extends ConsumerState<StreakHistoryUI> {
+  String? get name => widget.streak.name;
+  String? get streakId => widget.streak.streakId;
+  late List<Attempt>? attempts;
 
   final List<String> selectedAttemptList = [];
-  final hive = Hive.box('habbits');
+  final hive = Hive.box('streaks');
   bool selectionEnabled = false;
 
-  void getHabbit() {
-    final attempts = widget.habbitWithHistory.where((e) => !(e['active'] as bool)).toList();
-    attempts.sort(
-      (a, b) => HabbitCalc.memoryToEndDateTime(a).compareTo(
-        HabbitCalc.memoryToEndDateTime(b),
-      ),
-    );
-    habbit = attempts;
+  void getStreak() {
+    final streakAttempts = widget.streak.attempts?.where((e) => !(e.active ?? false)).toList();
+    streakAttempts?.sort((a, b) => (a.endDateTime)!.compareTo((b.startDateTime)!));
+    attempts = streakAttempts!;
   }
 
-  Duration diffDuration({required Map habbit}) {
-    return HabbitCalc.memoryToEndDateTime(habbit).difference(HabbitCalc.memoryToStartDateTime(habbit));
+  Duration diffDuration({required Attempt a}) {
+    return (a.endDateTime)!.difference((a.startDateTime)!);
   }
 
   @override
   void initState() {
     super.initState();
-    getHabbit();
+    getStreak();
   }
 
   @override
@@ -68,26 +60,26 @@ class _HabbitHistoryUIState extends ConsumerState<HabbitHistoryUI> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: "$name ( ${habbit.length} Attempts )".text.make(),
+          title: "$name ( ${attempts?.length} Attempts )".text.make(),
           actions: [
             IconButton(
               icon: const Icon(Icons.delete),
               onPressed: () {
                 selectedAttemptList.forEachIndexed((int index, String element) {
-                  habbit.removeWhere((e) => e['attemptId'] == element);
+                  attempts?.removeWhere((e) => e.attemptId == element);
                 });
-                habbit = habbit;
+                attempts = attempts;
 
-                final habbitStreakList = widget.habbitWithHistory.where((e) => e['active'] as bool).toList();
-                habbitStreakList.addAll(habbit);
-                hive.put(habbitId, habbitStreakList);
+                final List<Attempt>? streakStreakList = widget.streak.attempts?.where((e) => e.active ?? false).toList();
+                streakStreakList?.addAll(attempts ?? []);
+                hive.put(streakId, streakStreakList);
 
                 setState(() {
                   selectionEnabled = false;
                   selectedAttemptList.clear();
                 });
 
-                final refreshPage = ref.read(habbitViewRefresherProvider);
+                final refreshPage = ref.read(streakViewRefresherProvider);
                 if (refreshPage != null) refreshPage();
               },
             ).when(selectionEnabled && selectedAttemptList.isNotEmpty),
@@ -98,20 +90,16 @@ class _HabbitHistoryUIState extends ConsumerState<HabbitHistoryUI> {
             physics: const BouncingScrollPhysics(
               parent: AlwaysScrollableScrollPhysics(),
             ),
-            itemCount: habbit.length,
+            itemCount: attempts?.length,
             itemBuilder: (context, index) {
-              final attempt = habbit.elementAt(index);
-              final target = attempt['target'] as int;
-              final diff = diffDuration(habbit: attempt);
-              final attemptId = attempt['attemptId'] as String;
-              final isSelected = selectedAttemptList.contains(attemptId);
-              final startDate = HabbitCalc.memoryToStartDateTime(attempt);
-              final endDate = HabbitCalc.memoryToEndDateTime(attempt);
-              final percentage = HabbitCalc.getPercentage(target: target, diff: diff);
-              final differnce = HabbitCalc.calculateDateDifference(
-                target: target,
-                specificDate: startDate,
-              );
+              final Attempt attempt = attempts!.elementAt(index);
+              final Duration diff = diffDuration(a: attempt);
+              final String attemptId = (attempt.attemptId)!;
+              final bool isSelected = selectedAttemptList.contains(attempt.attemptId);
+              final DateTime startDate = (attempt.startDateTime)!;
+              final DateTime endDate = (attempt.endDateTime)!;
+              final double percentage = StreakCalc.getPercentage(target: (attempt.target)!, diff: diff);
+              final Duration differnce = DateTime.now().difference(startDate);
 
               return AnimationConfiguration.staggeredList(
                 position: index,
@@ -129,15 +117,12 @@ class _HabbitHistoryUIState extends ConsumerState<HabbitHistoryUI> {
                         } else if (isSelected) {
                           selectedAttemptList.remove(attemptId);
                         } else {
-                          // Navigator.push(
-                          //   context,
-                          //   MaterialPageRoute(
-                          //     builder: (context) => HabbitView(
-                          //       habbitId: habbitKey,
-                          //       habbitWithHistory: habbitWithHistory,
-                          //     ),
-                          //   ),
-                          // );
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => StreakView(widget.streak),
+                            ),
+                          );
                         }
                         setState(() {});
                       },
@@ -162,9 +147,9 @@ class _HabbitHistoryUIState extends ConsumerState<HabbitHistoryUI> {
                                   "Attempt ${index + 1}".text.lg.make(),
                                   Row(
                                     children: [
-                                      HabbitCalc.formatDateTime(startDate).text.zinc400.sm.make(),
+                                      StreakCalc.formatDateTime(startDate).text.zinc400.sm.make(),
                                       ' - '.text.zinc400.sm.make(),
-                                      HabbitCalc.formatDateTime(endDate).text.zinc400.sm.make(),
+                                      StreakCalc.formatDateTime(endDate).text.zinc400.sm.make(),
                                     ],
                                   ),
                                 ],
@@ -176,7 +161,7 @@ class _HabbitHistoryUIState extends ConsumerState<HabbitHistoryUI> {
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  '${differnce.inDays}/$target Days'.text.zinc400.sm.make(),
+                                  '${differnce.inDays}/${(attempt.target)!} Days'.text.zinc400.sm.make(),
                                   "${percentage.toStringAsFixed(0)}%".text.zinc400.sm.make(),
                                 ],
                               ),

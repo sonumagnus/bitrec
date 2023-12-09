@@ -1,22 +1,24 @@
+import 'package:bitrec/hive/adapters/attempt.dart';
+import 'package:bitrec/hive/adapters/streak.dart';
 import 'package:bitrec/themes/my_colors.dart';
-import 'package:bitrec/utils/habbit_calc.dart';
+import 'package:bitrec/utils/streak_calc.dart';
 import 'package:bitrec/widgets/empty_screen_ui.dart';
-import 'package:bitrec/widgets/habbit_view.dart';
+import 'package:bitrec/widgets/streak_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:velocity_x/velocity_x.dart';
 
-class HabbitList extends StatefulWidget {
-  const HabbitList({super.key});
+class StreakList extends StatefulWidget {
+  const StreakList({super.key});
 
   @override
-  State<HabbitList> createState() => _HabbitListState();
+  State<StreakList> createState() => _StreakListState();
 }
 
-class _HabbitListState extends State<HabbitList> {
-  final selectedHabbit = [];
-  final hive = Hive.box('habbits');
+class _StreakListState extends State<StreakList> {
+  final selectedStreak = [];
+  final hive = Hive.box('streaks');
   bool selectionEnabled = false;
 
   @override
@@ -24,10 +26,10 @@ class _HabbitListState extends State<HabbitList> {
     final MyColors myColor = Theme.of(context).extension<MyColors>()!;
     return WillPopScope(
       onWillPop: () async {
-        if (selectionEnabled || selectedHabbit.isNotEmpty) {
+        if (selectionEnabled || selectedStreak.isNotEmpty) {
           setState(() {
             selectionEnabled = false;
-            selectedHabbit.clear();
+            selectedStreak.clear();
           });
           return false;
         }
@@ -35,39 +37,37 @@ class _HabbitListState extends State<HabbitList> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Habbits'),
+          title: const Text('Streaks'),
           actions: [
             IconButton(
               onPressed: () async {
-                for (final habbitId in selectedHabbit) {
-                  await hive.delete(habbitId);
+                for (final streakId in selectedStreak) {
+                  await hive.delete(streakId);
                 }
                 selectionEnabled = false;
-                selectedHabbit.clear();
+                selectedStreak.clear();
                 setState(() {});
               },
               icon: const Icon(Icons.delete),
-            ).when(selectionEnabled && selectedHabbit.isNotEmpty),
+            ).when(selectionEnabled && selectedStreak.isNotEmpty),
           ],
         ),
         body: AnimationLimiter(
           child: hive.keys.isEmpty
-              ? const EmptyScreenUI(text: 'Here All Your Habbits and Streaks WIll be Listed...')
+              ? const EmptyScreenUI(text: 'Here All Your Streaks and Streaks WIll be Listed...')
               : ListView.builder(
                   physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                   itemCount: hive.keys.length,
                   itemBuilder: (context, index) {
-                    final habbitKey = hive.keys.elementAt(index);
-                    final bool isSelected = selectedHabbit.contains(habbitKey);
-                    final List habbitWithHistory = hive.get(habbitKey);
-                    final habbit = habbitWithHistory.firstWhere((e) => e['active'] as bool);
-                    final target = habbit['target'] as int;
-                    final startDate = HabbitCalc.memoryToStartDateTime(habbit);
-                    final Duration differnce = HabbitCalc.calculateDateDifference(
-                      target: target,
-                      specificDate: startDate,
-                    );
-                    final percentage = HabbitCalc.getPercentage(target: habbit['target'], diff: differnce);
+                    final streakKey = hive.keys.elementAt(index);
+                    final bool isSelected = selectedStreak.contains(streakKey);
+                    final Streak streak = hive.get(streakKey);
+                    final Attempt? attempt = streak.attempts?.firstWhere((e) => e.active ?? false);
+                    final int target = (attempt?.target)!;
+                    final DateTime startDate = (attempt?.startDateTime)!;
+                    final Duration differnce = DateTime.now().difference(startDate);
+                    final double percentage = StreakCalc.getPercentage(target: target, diff: differnce);
+
                     return AnimationConfiguration.staggeredList(
                       position: index,
                       delay: const Duration(milliseconds: 100),
@@ -80,17 +80,14 @@ class _HabbitListState extends State<HabbitList> {
                           child: GestureDetector(
                             onTap: () {
                               if (selectionEnabled && !isSelected) {
-                                selectedHabbit.add(habbitKey);
+                                selectedStreak.add(streakKey);
                               } else if (isSelected) {
-                                selectedHabbit.remove(habbitKey);
+                                selectedStreak.remove(streakKey);
                               } else {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => HabbitView(
-                                      habbitId: habbitKey,
-                                      habbitWithHistory: habbitWithHistory,
-                                    ),
+                                    builder: (context) => StreakView(streak),
                                   ),
                                 );
                               }
@@ -99,9 +96,9 @@ class _HabbitListState extends State<HabbitList> {
                             onLongPress: () {
                               selectionEnabled = true;
                               if (!isSelected && selectionEnabled) {
-                                selectedHabbit.add(habbitKey);
+                                selectedStreak.add(streakKey);
                               } else {
-                                selectedHabbit.remove(habbitKey);
+                                selectedStreak.remove(streakKey);
                               }
                               setState(() {});
                             },
@@ -114,8 +111,8 @@ class _HabbitListState extends State<HabbitList> {
                                     Row(
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        (habbit['name']).toString().text.medium.lg.make(),
-                                        HabbitCalc.formatDateTime(startDate).text.zinc400.sm.make(),
+                                        (attempt?.name ?? '').text.medium.lg.make(),
+                                        StreakCalc.formatDateTime(startDate).text.zinc400.sm.make(),
                                       ],
                                     ),
                                     LinearProgressIndicator(

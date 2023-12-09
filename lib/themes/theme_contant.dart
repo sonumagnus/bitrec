@@ -10,11 +10,6 @@ class ThemeConstatnt {
   static final dark = ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
-
-    // scaffoldBackgroundColor: _primaryColor,
     extensions: <ThemeExtension<dynamic>>{MyColors.dark},
-    // floatingActionButtonTheme: const FloatingActionButtonThemeData(backgroundColor: _primaryColor),
-    // appBarTheme: const AppBarTheme(backgroundColor: _primaryColor),
-    // navigationBarTheme: const NavigationBarThemeData(backgroundColor: _primaryColor),
   );
 }

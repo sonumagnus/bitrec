@@ -1,16 +1,10 @@
 import 'package:flutter/material.dart';
 
-class Test extends StatefulWidget {
+class Test extends StatelessWidget {
   const Test({super.key});
 
   @override
-  State<Test> createState() => _TestState();
-}
-
-class _TestState extends State<Test> {
-  late bool show = false;
-  @override
   Widget build(BuildContext context) {
-    return const Scaffold();
+    return const Placeholder();
   }
 }

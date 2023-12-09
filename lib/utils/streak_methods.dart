@@ -1,6 +1,8 @@
+import 'package:bitrec/hive/adapters/attempt.dart';
+import 'package:bitrec/hive/adapters/streak.dart';
 import 'package:bitrec/screens/bottom_navbar.dart';
-import 'package:bitrec/screens/home.dart';
-import 'package:bitrec/utils/habbit_calc.dart';
+import 'package:bitrec/screens/streak_screen.dart';
+import 'package:bitrec/utils/streak_calc.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -8,19 +10,19 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:velocity_x/velocity_x.dart';
 
-class Habbit {
-  static final _hiveBox = Hive.box('habbits');
+class StreakMethods {
+  static final _hiveBox = Hive.box('streaks');
   static const _uuid = Uuid();
-  static createOrEditHabbit(
+  static createOrEditStreak(
     BuildContext context, {
     required WidgetRef ref,
-    String? habbitId,
-    dynamic habbit,
+    Streak? streak,
     bool edit = false,
   }) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
+        final attempt = streak?.attempts?.firstWhere((e) => e.active ?? false);
         return Dialog(
           backgroundColor: Colors.black.withGreen(5),
           shape: RoundedRectangleBorder(
@@ -31,16 +33,16 @@ class Habbit {
               final formKey = useMemoized(() => GlobalKey<FormState>(), const []);
 
               final habitDateTime = useMemoized(
-                () => edit ? HabbitCalc.memoryToStartDateTime(habbit) : null,
+                () => edit ? attempt?.startDateTime : null,
                 const [],
               );
 
               final nameFieldController = useTextEditingController(
-                text: edit ? habbit['name'] : null,
+                text: edit ? attempt?.name : null,
               );
 
               final targetFieldController = useTextEditingController(
-                text: edit ? (habbit['target']).toString() : null,
+                text: edit ? (attempt?.target).toString() : null,
               );
 
               final selectedDate = useState<DateTime>(
@@ -55,7 +57,7 @@ class Habbit {
                   : TimeOfDay.now());
 
               String dateTimeFieldtxt() {
-                String dgn(int n) => HabbitCalc.formatTwoDigitNumber(n);
+                String dgn(int n) => StreakCalc.formatTwoDigitNumber(n);
                 return '${dgn(selectedDate.value.day)}-${dgn(selectedDate.value.month)}-${selectedDate.value.year}  ${dgn(selectedTime.value.hour)}:${dgn(selectedTime.value.minute)}';
               }
 
@@ -87,44 +89,40 @@ class Habbit {
 
               void submitHandler() {
                 final dateTimeNow = DateTime.now();
-                final habbitObj = {
-                  'name': nameFieldController.text,
-                  'target': int.parse(targetFieldController.text),
-                  'active': true,
-                  'attemptId': null,
-                  'endDateTime': {
-                    'millisecond': null,
-                    'second': null,
-                    'minute': null,
-                    'hour': null,
-                    'day': null,
-                    'month': null,
-                    'year': null,
-                  },
-                  'dateTime': {
-                    'millisecond': edit ? habitDateTime?.millisecond : dateTimeNow.millisecond,
-                    'second': edit ? habitDateTime?.second : dateTimeNow.second,
-                    'minute': selectedTime.value.minute,
-                    'hour': selectedTime.value.hour,
-                    'day': selectedDate.value.day,
-                    'month': selectedDate.value.month,
-                    'year': selectedDate.value.year,
-                  },
-                };
+
+                final Attempt attempt = Attempt(
+                  name: nameFieldController.text,
+                  target: int.parse(targetFieldController.text),
+                  active: true,
+                  startDateTime: DateTime(
+                    selectedDate.value.year,
+                    selectedDate.value.month,
+                    selectedDate.value.day,
+                    selectedTime.value.hour,
+                    selectedTime.value.minute,
+                    edit ? (habitDateTime?.second)! : dateTimeNow.second,
+                    edit ? (habitDateTime?.millisecond)! : dateTimeNow.millisecond,
+                  ),
+                );
 
                 if (edit) {
-                  final List habbitWithHitstory = _hiveBox.get(habbitId);
-
-                  final newHabitObjList = habbitWithHitstory
-                      .replaceWhere(
-                        (e) => e['active'] as bool,
-                        habbitObj,
-                      )
-                      .toList();
-
-                  _hiveBox.put(habbitId, newHabitObjList);
+                  final updatedAttemptList = streak?.attempts?.replaceWhere((e) => e.active ?? false, attempt).toList();
+                  final Streak editedStreak = Streak(
+                    streakId: streak?.streakId,
+                    name: streak?.name,
+                    attempts: updatedAttemptList,
+                  );
+                  _hiveBox.put(streak?.streakId, editedStreak);
                 } else {
-                  _hiveBox.put(_uuid.v4(), [habbitObj]);
+                  final streakId = _uuid.v4();
+                  _hiveBox.put(
+                    streakId,
+                    Streak(
+                      streakId: streakId,
+                      name: nameFieldController.text,
+                      attempts: [attempt],
+                    ),
+                  );
                 }
 
                 nameFieldController.clear();
@@ -141,10 +139,10 @@ class Habbit {
                   children: [
                     TextFormField(
                       controller: nameFieldController,
-                      decoration: const InputDecoration(labelText: 'Habbit Name'),
+                      decoration: const InputDecoration(labelText: 'Streak Name'),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Habbit name is required';
+                          return 'Streak name is required';
                         }
                         return null;
                       },
@@ -207,8 +205,8 @@ class Habbit {
                           onPressed: () {
                             if (formKey.currentState?.validate() ?? false) {
                               submitHandler();
-                              if (ref.read(selectedIndexProvider) == 0) {
-                                ref.read(habbitViewRefresherProvider)!();
+                              if (ref.read(selectedIndexProvider) == 1) {
+                                ref.read(streakViewRefresherProvider)!();
                               }
                             } else {
                               debugPrint('validation failed');
@@ -231,13 +229,12 @@ class Habbit {
 
   static void showDeleteAlert(
     BuildContext context, {
-    required String? habbitId,
-    required dynamic habbit,
+    required Streak streak,
     required WidgetRef ref,
   }) {
-    final refreshPage = ref.read(habbitViewRefresherProvider);
+    final refreshPage = ref.read(streakViewRefresherProvider);
     final rexBox = Hive.box('rex');
-    final List pinnedHabbits = rexBox.get('pinnedHabbits') ?? [];
+    final List pinnedStreaks = rexBox.get('pinnedStreaks') ?? [];
 
     showDialog(
       context: context,
@@ -250,7 +247,7 @@ class Habbit {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              "Are you sure you want to delete this habbit!".text.center.make(),
+              "Are you sure you want to delete this streak!".text.center.make(),
               const SizedBox(height: 30),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -279,11 +276,11 @@ class Habbit {
                       ),
                     ),
                     onPressed: () {
-                      if (pinnedHabbits.contains(habbitId)) {
-                        pinnedHabbits.removeWhere((e) => e == habbitId);
-                        rexBox.put('pinnedHabbits', pinnedHabbits);
+                      if (pinnedStreaks.contains(streak.streakId)) {
+                        pinnedStreaks.removeWhere((e) => e == streak.streakId);
+                        rexBox.put('pinnedStreaks', pinnedStreaks);
                       }
-                      _hiveBox.delete(habbitId);
+                      _hiveBox.delete(streak.streakId);
                       if (refreshPage != null) refreshPage();
                       Navigator.of(context).pop();
                     },
@@ -301,7 +298,7 @@ class Habbit {
   static showRestartDialog(
     BuildContext ctx, {
     required WidgetRef ref,
-    required String? habbitId,
+    required Streak streak,
   }) {
     return showDialog(
       context: ctx,
@@ -314,7 +311,7 @@ class Habbit {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              "Are you sure you want to restart this habbit!".text.center.make(),
+              "Are you sure you want to restart this streak!".text.center.make(),
               const SizedBox(height: 30),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -343,7 +340,7 @@ class Habbit {
                       ),
                     ),
                     onPressed: () {
-                      _restartHabbit(habbitId: habbitId, ref: ref);
+                      _restartStreak(streak: streak, ref: ref);
                       Navigator.pop(context);
                     },
                     child: const Text('Restart'),
@@ -357,79 +354,73 @@ class Habbit {
     );
   }
 
-  static void _restartHabbit({
-    required String? habbitId,
+  static void _restartStreak({
+    required Streak streak,
     required WidgetRef ref,
   }) {
-    final List<dynamic> habbitWithHistory = _hiveBox.get(habbitId);
-    final habbit = habbitWithHistory.firstWhere((e) => e['active'] as bool);
+    final attempt = streak.attempts?.firstWhere((e) => e.active ?? false);
+
     final currDate = DateTime.now();
     final currTime = TimeOfDay.now();
 
-    habbit['active'] = false;
-    habbit['attemptId'] = _uuid.v4();
+    attempt?.active = false;
+    attempt?.attemptId = _uuid.v4();
 
-    habbit['endDateTime'] = {
-      'year': currDate.year,
-      'month': currDate.month,
-      'day': currDate.day,
-      'hour': currTime.hour,
-      'minute': currTime.minute,
-      'second': currDate.second,
-      'millisecond': currDate.millisecond,
-    };
+    attempt?.endDateTime = DateTime(
+      currDate.year,
+      currDate.month,
+      currDate.day,
+      currTime.hour,
+      currTime.minute,
+      currDate.second,
+      currDate.millisecond,
+    );
 
-    final dynamic newHabbit = {
-      'name': habbit['name'],
-      'target': habbit['target'],
-      'active': true,
-      'attemptId': null,
-      'endDateTime': {
-        'millisecond': null,
-        'second': null,
-        'minute': null,
-        'hour': null,
-        'day': null,
-        'month': null,
-        'year': null,
-      },
-      'dateTime': {
-        'millisecond': currDate.millisecond,
-        'second': currDate.second,
-        'minute': currTime.minute,
-        'hour': currTime.hour,
-        'day': currDate.day,
-        'month': currDate.month,
-        'year': currDate.year,
-      },
-    };
+    final newActiveAttempt = Attempt(
+      name: attempt?.name,
+      target: attempt?.target,
+      active: true,
+      startDateTime: DateTime(
+        currDate.year,
+        currDate.month,
+        currDate.day,
+        currTime.hour,
+        currTime.minute,
+        currDate.second,
+        currDate.millisecond,
+      ),
+    );
 
-    final List<dynamic> newHabbitWithHistory = [newHabbit, ...habbitWithHistory];
+    final newStreak = Streak(
+      streakId: streak.streakId,
+      name: streak.name,
+      attempts: [newActiveAttempt, ...(streak.attempts)!],
+    );
 
-    _hiveBox.put(habbitId, newHabbitWithHistory);
+    _hiveBox.put(streak.streakId, newStreak);
 
-    final Function? refreshPage = ref.read(habbitViewRefresherProvider);
+    final Function? refreshPage = ref.read(streakViewRefresherProvider);
     if (ref.read(selectedIndexProvider) == 0) {
       if (refreshPage != null) refreshPage();
     }
   }
 
-  static List getRealHabbitOrder() {
-    final allHabbitKeys = _hiveBox.keys.toList();
-    final List? pinnedHabbits = Hive.box('rex').get('pinnedHabbits');
-    if (pinnedHabbits == null) return allHabbitKeys;
+  static List getRealStreakOrder() {
+    final allStreakKeys = _hiveBox.keys.toList();
+    final List? pinnedStreaks = Hive.box('rex').get('pinnedStreaks');
+    if (pinnedStreaks == null) return allStreakKeys;
 
-    for (final id in pinnedHabbits.reversed) {
-      if (allHabbitKeys.contains(id)) {
-        final keyIndex = allHabbitKeys.indexWhere((e) => e == id);
-        final String removedId = allHabbitKeys.removeAt(keyIndex);
-        allHabbitKeys.insertT(0, removedId);
+    for (final id in pinnedStreaks.reversed) {
+      if (allStreakKeys.contains(id)) {
+        final keyIndex = allStreakKeys.indexWhere((e) => e == id);
+        final String removedId = allStreakKeys.removeAt(keyIndex);
+        allStreakKeys.insertT(0, removedId);
       }
     }
-    return allHabbitKeys;
+    return allStreakKeys;
   }
 
-  static void showMoreAboutHabbit(
+  static void showMoreAboutStreak(
     BuildContext ctx, {
     required String? name,
     required double percentage,
