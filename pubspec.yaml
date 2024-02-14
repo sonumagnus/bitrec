@@ -45,6 +45,7 @@ dependencies:
   syncfusion_flutter_gauges: ^23.2.4
   intl: ^0.18.1
   animated_text_kit: ^4.2.2
+  syncfusion_flutter_calendar: ^23.2.7
 
 dev_dependencies:
   flutter_test:
